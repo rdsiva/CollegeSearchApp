@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Request
 from app.models.schemas import ResearchRequest, CollegeDetail, CollegeSeed
 from app.services import google_places, youtube, claude_ai, scoring
 from app.cache import research_cache
-from app.main import limiter
+from app.limiter import limiter
 
 router = APIRouter()
 

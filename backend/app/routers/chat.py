@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from app.services import claude_ai
-from app.main import limiter
+from app.limiter import limiter
 
 router = APIRouter()
 
