@@ -73,53 +73,74 @@ async def predict_cutoffs_2026(
     courses: list[dict],
 ) -> dict[str, CourseCutoffs]:
     """
-    Use Claude to predict 2026 TNEA cutoffs for each branch.
+    Use Claude to predict 2026 TNEA cutoffs using up to 6 years of history.
     Returns dict keyed by branch_code -> CourseCutoffs.
     """
-    # Build branch summary for prompt
     branch_lines = []
     for c in courses:
+        hist = c.get("historical_cutoffs") or {}
         oc_2024 = (c.get("cutoffs") or {}).get("OC")
         oc_2025 = (c.get("cutoffs_2025") or {}).get("OC")
-        bc_2024 = (c.get("cutoffs") or {}).get("BC")
-        mbc_2024 = (c.get("cutoffs") or {}).get("MBC")
-        sc_2024 = (c.get("cutoffs") or {}).get("SC")
-        if oc_2024 or oc_2025:
-            branch_lines.append(
-                f'  Branch: {c["branch_name"]} (Code: {c["branch_code"]})\n'
-                f'    2024: OC={oc_2024}, BC={bc_2024}, MBC={mbc_2024}, SC={sc_2024}\n'
-                f'    2025 expected OC: {oc_2025 if oc_2025 else "not available"}'
-            )
+
+        # Build year-by-year OC trend line from all available data
+        year_oc: dict[str, float] = {}
+        for yr in ("2020", "2021", "2022", "2023"):
+            val = (hist.get(yr) or {}).get("OC")
+            if val is not None:
+                year_oc[yr] = val
+        if oc_2024 is not None:
+            year_oc["2024"] = oc_2024
+        if oc_2025 is not None:
+            year_oc["2025"] = oc_2025
+
+        if not year_oc:
+            continue
+
+        trend_str = " | ".join(f"{yr}: {v}" for yr, v in sorted(year_oc.items()))
+
+        # Include 2024 category breakdown so LLM can derive gaps
+        cutoffs_2024 = c.get("cutoffs") or {}
+        cats = ", ".join(
+            f"{cat}={cutoffs_2024.get(cat)}"
+            for cat in ("BC", "BCM", "MBC", "SC", "SCA", "ST")
+            if cutoffs_2024.get(cat) is not None
+        )
+        branch_lines.append(
+            f'  Branch: {c["branch_name"]} (Code: {c["branch_code"]})\n'
+            f'    OC trend: {trend_str}\n'
+            f'    2024 categories: {cats if cats else "not available"}'
+        )
 
     if not branch_lines:
         return {}
 
-    prompt = f"""You are a TNEA (Tamil Nadu Engineering Admissions) counselling expert predicting 2026 cutoffs.
+    prompt = f"""You are a TNEA (Tamil Nadu Engineering Admissions) expert predicting 2026 cutoffs.
 
 College: {college_name}
 
-Historical cutoff data:
+Historical OC cutoff trends and 2024 category data per branch:
 {chr(10).join(branch_lines)}
 
-TNEA Cutoff Trends (2024 to 2026):
-- CSE, IT, Artificial Intelligence, Data Science, Cyber Security: Demand is rising, typically +3 to +5 marks over 2 years
-- ECE, EEE: Moderate demand, +1 to +2 marks
-- Mechanical, Civil, Chemical: Stable or slight decrease, 0 to -2 marks
-- Category gap (BC = OC - 13 to 15, MBC = OC - 17 to 20, SC = OC - 30 to 35, ST = OC - 50, SCA = OC - 37, BCM = OC - 22 to 25)
-
-Based on this data, predict realistic 2026 TNEA cutoffs for each branch.
+Instructions:
+1. Analyse the year-on-year OC trend for each branch (acceleration, plateau, decline).
+2. Branches with consistent upward trend in last 3 years will likely continue rising.
+3. Branches near the maximum (200) cannot exceed it — apply ceiling logic.
+4. Derive all 7 category cutoffs for 2026 using the 2024 category gaps as baseline.
+5. Category gaps (approximate): BC = OC-13 to OC-15, MBC = OC-17 to OC-20,
+   BCM = OC-22 to OC-25, SC = OC-30 to OC-35, SCA = OC-36 to OC-40, ST = OC-48 to OC-52.
+6. Clamp all values to range [80, 200].
 
 Return ONLY a JSON array, no other text:
 [
   {{
-    "branch_code": "CSE",
-    "OC": 185.5,
-    "BC": 171.0,
-    "BCM": 162.0,
-    "MBC": 167.0,
-    "SC": 152.0,
-    "SCA": 148.0,
-    "ST": 135.0
+    "branch_code": "CS",
+    "OC": 200.0,
+    "BC": 186.5,
+    "BCM": 177.0,
+    "MBC": 182.0,
+    "SC": 168.0,
+    "SCA": 163.0,
+    "ST": 150.0
   }}
 ]"""
 
@@ -154,26 +175,65 @@ Return ONLY a JSON array, no other text:
         return _fallback_predict_cutoffs(courses)
 
 
+def _linear_trend(year_oc: dict[str, float]) -> float:
+    """
+    Compute next-year slope using simple linear regression on OC values keyed by year string.
+    Returns the predicted increment for one additional year.
+    Falls back to mean of last-3-year deltas if fewer than 3 points.
+    """
+    if not year_oc:
+        return 1.0
+    pts = sorted((int(yr), v) for yr, v in year_oc.items() if v is not None)
+    if len(pts) < 2:
+        return 1.0
+    # Use last 6 points max
+    pts = pts[-6:]
+    if len(pts) == 2:
+        return round(pts[-1][1] - pts[-2][1], 2)
+    n = len(pts)
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    x_mean = sum(xs) / n
+    y_mean = sum(ys) / n
+    num = sum((xs[i] - x_mean) * (ys[i] - y_mean) for i in range(n))
+    den = sum((xs[i] - x_mean) ** 2 for i in range(n))
+    return round(num / den, 2) if den else 1.0
+
+
 def _fallback_predict_cutoffs(courses: list[dict]) -> dict[str, CourseCutoffs]:
-    """Simple trend-based fallback when Claude API is unavailable."""
-    TREND = {"CSE": 3, "IT": 2.5, "AI": 3, "ECE": 1.5, "EEE": 0.5, "MECH": 0, "CIVIL": 0}
+    """Regression-based fallback when Claude API is unavailable."""
     CAT_OFFSETS = {"BC": -14, "BCM": -23, "MBC": -18, "SC": -32, "SCA": -37, "ST": -51}
     result = {}
     for c in courses:
-        oc = (c.get("cutoffs_2025") or c.get("cutoffs") or {}).get("OC")
-        if not oc:
+        hist = c.get("historical_cutoffs") or {}
+        year_oc: dict[str, float] = {}
+        for yr in ("2020", "2021", "2022", "2023"):
+            val = (hist.get(yr) or {}).get("OC")
+            if val is not None:
+                year_oc[yr] = val
+        oc_2024 = (c.get("cutoffs") or {}).get("OC")
+        oc_2025 = (c.get("cutoffs_2025") or {}).get("OC")
+        if oc_2024:
+            year_oc["2024"] = oc_2024
+        if oc_2025:
+            year_oc["2025"] = oc_2025
+
+        base_oc = oc_2025 or oc_2024
+        if not base_oc:
             continue
+
+        slope = _linear_trend(year_oc)
+        # Clamp slope: max +5 for high-demand, min -3 for declining
+        slope = max(-3.0, min(5.0, slope))
+        oc_2026 = round(min(200.0, max(80.0, base_oc + slope)), 1)
+
         code = c["branch_code"]
-        trend = TREND.get(code, 1.0)
-        oc_2026 = round(oc + trend, 1)
         result[code] = CourseCutoffs(
             OC=oc_2026,
-            BC=round(max(oc_2026 - 14, 80), 1),
-            BCM=round(max(oc_2026 - 23, 80), 1),
-            MBC=round(max(oc_2026 - 18, 80), 1),
-            SC=round(max(oc_2026 - 32, 80), 1),
-            SCA=round(max(oc_2026 - 37, 80), 1),
-            ST=round(max(oc_2026 - 51, 80), 1),
+            **{
+                cat: round(max(80.0, oc_2026 + offset), 1)
+                for cat, offset in CAT_OFFSETS.items()
+            },
         )
     return result
 

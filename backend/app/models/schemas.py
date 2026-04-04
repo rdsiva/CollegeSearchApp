@@ -15,9 +15,10 @@ class CourseCutoffs(BaseModel):
 class Course(BaseModel):
     branch_code: str
     branch_name: str
-    cutoffs: CourseCutoffs
-    cutoffs_2025: Optional[CourseCutoffs] = None
-    cutoffs_2026_predicted: Optional[CourseCutoffs] = None
+    cutoffs: CourseCutoffs                                   # 2024 actual
+    cutoffs_2025: Optional[CourseCutoffs] = None             # 2025 actual
+    cutoffs_2026_predicted: Optional[CourseCutoffs] = None   # 2026 LLM prediction
+    historical_cutoffs: dict[str, CourseCutoffs] = {}        # "2020"–"2023" keyed by year
 
 
 class Fees(BaseModel):
