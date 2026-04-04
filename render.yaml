@@ -1,0 +1,72 @@
+services:
+  # ── Backend: FastAPI Web Service ─────────────────────────────────────────
+  - type: web
+    name: tn-college-backend
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: ANTHROPIC_API_KEY
+        sync: false          # set manually in Render dashboard
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false
+      - key: YOUTUBE_API_KEY
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false          # set to your Render static-site URL
+
+  # ── Keep-alive Cron (pings backend every 14 min to prevent free-tier sleep)
+  - type: cron
+    name: tn-college-keepalive
+    runtime: python
+    plan: free
+    schedule: "*/14 * * * *"
+    buildCommand: ""
+    startCommand: >
+      python -c "
+      import urllib.request, sys, os;
+      url = os.environ.get('BACKEND_URL', '');
+      r = urllib.request.urlopen(url + '/health', timeout=10);
+      data = r.read();
+      print('health:', data);
+      sys.exit(0 if r.status == 200 else 1)
+      "
+    envVars:
+      - key: BACKEND_URL
+        sync: false          # set to https://tn-college-backend.onrender.com
+
+  # ── Frontend: React/Vite Static Site ─────────────────────────────────────
+  - type: web
+    name: tn-college-frontend
+    runtime: static
+    plan: free
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false          # set to your backend Render URL + /api
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
