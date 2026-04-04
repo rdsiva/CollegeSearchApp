@@ -1,4 +1,5 @@
 import os
+import time as _time
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,11 +13,6 @@ from app.routers import search, colleges, export, chat
 load_dotenv()
 
 IS_PRODUCTION = os.getenv("ENVIRONMENT", "development") == "production"
-
-# ---------------------------------------------------------------------------
-# Rate limiter
-# ---------------------------------------------------------------------------
-limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
 
 # ---------------------------------------------------------------------------
 # App — disable interactive docs in production
@@ -74,7 +70,6 @@ app.include_router(export.router, prefix="/api", tags=["Export"])
 app.include_router(chat.router, prefix="/api", tags=["Chat"])
 
 
-import time as _time
 _START_TIME = _time.time()
 
 
