@@ -1,0 +1,17 @@
+name: Keep Backend Alive
+
+on:
+  schedule:
+    - cron: '*/14 * * * *'   # every 14 minutes
+  workflow_dispatch:           # allow manual trigger
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            https://tn-college-backend.onrender.com/health)
+          echo "Health check status: $STATUS"
+          [ "$STATUS" = "200" ] || exit 1
