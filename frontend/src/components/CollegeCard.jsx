@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend
 } from 'recharts';
-import { MapPin, Award, TrendingUp, DollarSign, ThumbsUp, ThumbsDown, Star, ExternalLink, ChevronDown, ChevronUp, PlusCircle, MessageCircle, GitCompare } from 'lucide-react';
+import { MapPin, Award, TrendingUp, DollarSign, ThumbsUp, ThumbsDown, Star, ExternalLink, ChevronDown, ChevronUp, PlusCircle, MessageCircle, GitCompare, Pencil } from 'lucide-react';
 import { useSession } from '../context/SessionContext';
 import { useChat } from '../context/ChatContext';
 import { useCompare } from '../context/CompareContext';
@@ -98,7 +98,7 @@ export default function CollegeCard({ college }) {
   const [expanded, setExpanded] = useState(false);
   const [showBranchModal, setShowBranchModal] = useState(false);
   const [branchSelection, setBranchSelection] = useState(new Set());
-  const { addToFavorites, favorites } = useSession();
+  const { addToFavorites, favorites, updateFavoritesCourses } = useSession();
   const { openForCollege } = useChat();
   const { addToCompare, removeFromCompare, isInCompare, isFull } = useCompare();
   const isInFavorites = favorites.some((f) => f.code === college.code);
@@ -115,10 +115,12 @@ export default function CollegeCard({ college }) {
 
   const handleSaveBranches = () => {
     const allSelected = branchSelection.size === college.courses.length;
-    addToFavorites({
-      ...college,
-      selectedCourses: allSelected ? undefined : Array.from(branchSelection),
-    });
+    const selectedCourses = allSelected ? undefined : Array.from(branchSelection);
+    if (isInFavorites) {
+      updateFavoritesCourses(college.code, selectedCourses);
+    } else {
+      addToFavorites({ ...college, selectedCourses });
+    }
     setShowBranchModal(false);
   };
 
@@ -204,8 +206,24 @@ export default function CollegeCard({ college }) {
                 <PlusCircle size={13} /> Add to Favorites
               </button>
             ) : (
-              <span className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-xs font-medium border border-green-200">
-                <Star size={13} className="fill-green-500" /> In Favorites
+              <span className="flex items-center gap-1 rounded-lg text-xs font-medium border border-green-200 overflow-hidden">
+                <span className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700">
+                  <Star size={13} className="fill-green-500" /> In Favorites
+                </span>
+                <button
+                  onClick={() => {
+                    setBranchSelection(new Set(
+                      (college.courses?.length ?? 0) > 0
+                        ? college.courses.map((c) => c.branch_name)
+                        : []
+                    ));
+                    setShowBranchModal(true);
+                  }}
+                  className="flex items-center gap-1 px-2 py-1.5 bg-green-100 text-green-700 hover:bg-green-200 transition-colors border-l border-green-200 h-full"
+                  title="Edit branches"
+                >
+                  <Pencil size={11} /> Edit
+                </button>
               </span>
             )}
           </div>

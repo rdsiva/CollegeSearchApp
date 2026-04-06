@@ -12,6 +12,8 @@ interface SessionContextValue {
   removeFromFavorites: (code: string) => void;
   clearFavorites: () => void;
   isFavorite: (code: string) => boolean;
+  reorderFavorites: (fromIdx: number, toIdx: number) => void;
+  updateFavoritesCourses: (code: string, selectedCourses: string[] | undefined) => void;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -61,9 +63,22 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const clearFavorites = () => setFavorites([]);
   const isFavorite = (code: string) => favorites.some((f) => f.code === code);
 
+  const reorderFavorites = (fromIdx: number, toIdx: number) =>
+    setFavorites((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return next;
+    });
+
+  const updateFavoritesCourses = (code: string, selectedCourses: string[] | undefined) =>
+    setFavorites((prev) =>
+      prev.map((f) => (f.code === code ? { ...f, selectedCourses } : f))
+    );
+
   return (
     <SessionContext.Provider
-      value={{ favorites, addToFavorites, addManyToFavorites, removeFromFavorites, clearFavorites, isFavorite }}
+      value={{ favorites, addToFavorites, addManyToFavorites, removeFromFavorites, clearFavorites, isFavorite, reorderFavorites, updateFavoritesCourses }}
     >
       {children}
     </SessionContext.Provider>

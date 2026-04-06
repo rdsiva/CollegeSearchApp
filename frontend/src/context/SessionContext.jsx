@@ -27,8 +27,23 @@ export function SessionProvider({ children }) {
 
   const clearFavorites = useCallback(() => setFavorites([]), []);
 
+  const reorderFavorites = useCallback((fromIdx, toIdx) => {
+    setFavorites((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return next;
+    });
+  }, []);
+
+  const updateFavoritesCourses = useCallback((code, selectedCourses) => {
+    setFavorites((prev) =>
+      prev.map((f) => f.code === code ? { ...f, selectedCourses } : f)
+    );
+  }, []);
+
   return (
-    <SessionContext.Provider value={{ favorites, addToFavorites, addManyToFavorites, removeFromFavorites, clearFavorites }}>
+    <SessionContext.Provider value={{ favorites, addToFavorites, addManyToFavorites, removeFromFavorites, clearFavorites, reorderFavorites, updateFavoritesCourses }}>
       {children}
     </SessionContext.Provider>
   );

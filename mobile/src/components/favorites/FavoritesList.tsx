@@ -20,7 +20,7 @@ import type { CollegeDetail } from '@/types';
 
 export default function FavoritesList() {
   const router = useRouter();
-  const { favorites, removeFromFavorites, clearFavorites } = useSession();
+  const { favorites, removeFromFavorites, clearFavorites, reorderFavorites, updateFavoritesCourses } = useSession();
   const { addToCompare, removeFromCompare, isInCompare, isFull } = useCompare();
   const { exporting, exportError, handleExportCsv, handleExportWord } = useFavoriteExport();
 
@@ -106,11 +106,15 @@ export default function FavoritesList() {
         renderItem={({ item, index }) => (
           <FavoriteRow
             college={item}
+            index={index}
+            total={favorites.length}
             onRemove={removeFromFavorites}
             onNavigate={handleNavigate}
             onToggleCompare={handleToggleCompare}
             isInCompare={isInCompare(item.code)}
-            index={index}
+            onMoveUp={() => reorderFavorites(index, index - 1)}
+            onMoveDown={() => reorderFavorites(index, index + 1)}
+            onUpdateCourses={updateFavoritesCourses}
           />
         )}
         contentContainerStyle={styles.list}
