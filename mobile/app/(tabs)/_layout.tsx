@@ -4,7 +4,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Colors } from '@/constants/colors';
 import { useSession } from '@/context/SessionContext';
 import { useCompare } from '@/context/CompareContext';
-import BuddyFab from '@/components/ui/BuddyFab';
+import BuddyHeaderButton from '@/components/ui/BuddyHeaderButton';
 
 function Badge({ count }: { count: number }) {
   if (count === 0) return null;
@@ -20,7 +20,6 @@ export default function TabLayout() {
   const { compareList } = useCompare();
 
   return (
-    <View style={{ flex: 1 }}>
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: Colors.primary,
@@ -29,6 +28,7 @@ export default function TabLayout() {
         headerStyle: { backgroundColor: Colors.primary },
         headerTintColor: Colors.white,
         headerTitleStyle: { fontWeight: '600' },
+        headerRight: () => <BuddyHeaderButton />,
       }}
     >
       <Tabs.Screen
@@ -63,8 +63,6 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
-      <BuddyFab />
-    </View>
   );
 }
 
