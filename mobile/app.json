@@ -23,8 +23,7 @@
       "predictiveBackGestureEnabled": false
     },
     "plugins": [
-      "expo-router",
-      "@react-native-async-storage/async-storage"
+      "expo-router"
     ],
     "experiments": {
       "typedRoutes": true
