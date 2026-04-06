@@ -22,7 +22,24 @@ export default function Home() {
     setMatches(null);
     setResults([]);
     try {
-      const data = await searchColleges(params);
+      let data;
+      if (params.type === 'cutoff' && params.courses && params.courses.length > 0) {
+        const calls = params.courses.map((c) =>
+          searchColleges({ ...params, course: c, courses: undefined })
+        );
+        const allResults = await Promise.all(calls);
+        const seen = new Set();
+        const merged = allResults
+          .flatMap((r) => r.matches)
+          .filter((m) => {
+            if (seen.has(m.code)) return false;
+            seen.add(m.code);
+            return true;
+          });
+        data = { matches: merged, exact: false };
+      } else {
+        data = await searchColleges(params);
+      }
       if (data.exact && data.matches.length === 1) {
         // Single exact match — go straight to research
         await handleResearch([data.matches[0].code]);

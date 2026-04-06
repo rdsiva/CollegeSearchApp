@@ -22,13 +22,34 @@ const YEARS = [
 export default function CutoffSearchForm({ onSearch, loading }) {
   const [mark, setMark] = useState('');
   const [category, setCategory] = useState('OC');
-  const [course, setCourse] = useState('Computer Science and Engineering');
+  const [selectedCourses, setSelectedCourses] = useState(new Set());
   const [year, setYear] = useState('2026');
+
+  const allSelected = selectedCourses.size === 0;
+
+  const toggleCourse = (course) => {
+    setSelectedCourses((prev) => {
+      const next = new Set(prev);
+      if (next.has(course)) next.delete(course);
+      else next.add(course);
+      return next;
+    });
+  };
+
+  const handleAllCoursesToggle = () => {
+    setSelectedCourses(new Set());
+  };
 
   function handleSubmit(e) {
     e.preventDefault();
     if (!mark) return;
-    onSearch({ type: 'cutoff', mark: parseFloat(mark), category, course, year });
+    onSearch({
+      type: 'cutoff',
+      mark: parseFloat(mark),
+      category,
+      courses: selectedCourses.size > 0 ? Array.from(selectedCourses) : [],
+      year,
+    });
   }
 
   return (
@@ -58,17 +79,36 @@ export default function CutoffSearchForm({ onSearch, loading }) {
           ))}
         </select>
       </div>
-      <div className="flex flex-col gap-1 flex-1 min-w-48">
-        <label className="text-xs font-medium text-gray-600">Preferred Course</label>
-        <select
-          value={course}
-          onChange={(e) => setCourse(e.target.value)}
-          className="px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-        >
+      <div className="flex flex-col gap-1 flex-1 min-w-56">
+        <label className="text-xs font-medium text-gray-600">
+          Preferred Courses
+          {selectedCourses.size > 0 && (
+            <span className="ml-1 text-blue-600">({selectedCourses.size} selected)</span>
+          )}
+        </label>
+        <div className="border border-gray-300 rounded-lg bg-white p-2 max-h-44 overflow-y-auto space-y-1">
+          <label className="flex items-center gap-2 cursor-pointer px-1 py-0.5 rounded hover:bg-gray-50">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={handleAllCoursesToggle}
+              className="accent-blue-600"
+            />
+            <span className="text-sm font-medium text-gray-700">All Courses</span>
+          </label>
+          <div className="border-t border-gray-100 my-1" />
           {COURSES.map((c) => (
-            <option key={c} value={c}>{c}</option>
+            <label key={c} className="flex items-center gap-2 cursor-pointer px-1 py-0.5 rounded hover:bg-gray-50">
+              <input
+                type="checkbox"
+                checked={selectedCourses.has(c)}
+                onChange={() => toggleCourse(c)}
+                className="accent-blue-600"
+              />
+              <span className="text-sm text-gray-700">{c}</span>
+            </label>
           ))}
-        </select>
+        </div>
       </div>
       <div className="flex flex-col gap-1">
         <label className="text-xs font-medium text-gray-600">Cutoff Year</label>

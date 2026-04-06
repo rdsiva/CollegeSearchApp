@@ -96,11 +96,40 @@ function ScoreBadge({ score }) {
 
 export default function CollegeCard({ college }) {
   const [expanded, setExpanded] = useState(false);
+  const [showBranchModal, setShowBranchModal] = useState(false);
+  const [branchSelection, setBranchSelection] = useState(new Set());
   const { addToFavorites, favorites } = useSession();
   const { openForCollege } = useChat();
   const { addToCompare, removeFromCompare, isInCompare, isFull } = useCompare();
   const isInFavorites = favorites.some((f) => f.code === college.code);
   const inCompare = isInCompare(college.code);
+
+  const handleAddToFavorites = () => {
+    if ((college.courses?.length ?? 0) <= 1) {
+      addToFavorites(college);
+    } else {
+      setBranchSelection(new Set(college.courses.map((c) => c.branch_name)));
+      setShowBranchModal(true);
+    }
+  };
+
+  const handleSaveBranches = () => {
+    const allSelected = branchSelection.size === college.courses.length;
+    addToFavorites({
+      ...college,
+      selectedCourses: allSelected ? undefined : Array.from(branchSelection),
+    });
+    setShowBranchModal(false);
+  };
+
+  const toggleBranch = (branchName) => {
+    setBranchSelection((prev) => {
+      const next = new Set(prev);
+      if (next.has(branchName)) next.delete(branchName);
+      else next.add(branchName);
+      return next;
+    });
+  };
 
   const placementData = college.placement?.avg_lpa ? [
     { name: 'Avg LPA', value: college.placement.avg_lpa },
@@ -169,7 +198,7 @@ export default function CollegeCard({ college }) {
             </button>
             {!isInFavorites ? (
               <button
-                onClick={() => addToFavorites(college)}
+                onClick={handleAddToFavorites}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-50 text-yellow-700 hover:bg-yellow-100 rounded-lg text-xs font-medium transition-colors border border-yellow-200"
               >
                 <PlusCircle size={13} /> Add to Favorites
@@ -383,6 +412,64 @@ export default function CollegeCard({ college }) {
               </ul>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Branch-picker modal */}
+      {showBranchModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col">
+            <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+              <h3 className="text-base font-bold text-gray-900">Choose branches to save</h3>
+              <p className="text-xs text-gray-500 mt-0.5">{college.name}</p>
+            </div>
+            <div className="px-6 py-3 border-b border-gray-100">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={branchSelection.size === college.courses.length}
+                  onChange={() => {
+                    if (branchSelection.size === college.courses.length) {
+                      setBranchSelection(new Set());
+                    } else {
+                      setBranchSelection(new Set(college.courses.map((c) => c.branch_name)));
+                    }
+                  }}
+                  className="accent-blue-600"
+                />
+                <span className="text-sm font-semibold text-gray-800">All Branches</span>
+              </label>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-2 space-y-1">
+              {college.courses.map((course) => (
+                <label key={course.branch_code} className="flex items-center gap-2 cursor-pointer py-1.5 hover:bg-gray-50 rounded px-1">
+                  <input
+                    type="checkbox"
+                    checked={branchSelection.has(course.branch_name)}
+                    onChange={() => toggleBranch(course.branch_name)}
+                    className="accent-blue-600"
+                  />
+                  <span className="text-sm text-gray-800">{course.branch_name}</span>
+                  <span className="text-xs text-gray-400 font-mono ml-auto">{course.branch_code}</span>
+                </label>
+              ))}
+            </div>
+            <div className="px-6 py-4 border-t border-gray-100 flex gap-3">
+              <button
+                onClick={() => setShowBranchModal(false)}
+                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveBranches}
+                disabled={branchSelection.size === 0}
+                className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Save {branchSelection.size > 0 ? `(${branchSelection.size})` : ''}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
