@@ -4,6 +4,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Colors } from '@/constants/colors';
 import { useSession } from '@/context/SessionContext';
 import { useCompare } from '@/context/CompareContext';
+import BuddyFab from '@/components/ui/BuddyFab';
 
 function Badge({ count }: { count: number }) {
   if (count === 0) return null;
@@ -19,6 +20,7 @@ export default function TabLayout() {
   const { compareList } = useCompare();
 
   return (
+    <View style={{ flex: 1 }}>
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: Colors.primary,
@@ -61,6 +63,8 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+      <BuddyFab />
+    </View>
   );
 }
 
