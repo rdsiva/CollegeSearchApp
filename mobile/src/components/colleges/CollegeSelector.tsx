@@ -52,7 +52,14 @@ function CollegeRow({ item, isSelected, onToggle }: RowProps) {
           <Text style={styles.collegeName} numberOfLines={2}>
             {item.name}
           </Text>
-          <Text style={styles.code}>{item.code}</Text>
+          <View style={styles.badgesRow}>
+            {item.nirf_rank != null && (
+              <View style={styles.nirfBadge}>
+                <Text style={styles.nirfBadgeText}>#{item.nirf_rank}</Text>
+              </View>
+            )}
+            <Text style={styles.code}>{item.code}</Text>
+          </View>
         </View>
         <Text style={styles.location} numberOfLines={1}>
           {item.city}, {item.district}
@@ -87,9 +94,7 @@ export default function CollegeSelector({
   onToggle,
   onSelectAll,
   onDeselectAll,
-  onResearch,
-  isLoading,
-}: CollegeSelectorProps) {
+}: Omit<CollegeSelectorProps, 'onResearch' | 'isLoading'>) {
   const renderItem = useCallback(
     ({ item }: { item: CollegeMatch }) => (
       <CollegeRow
@@ -102,8 +107,6 @@ export default function CollegeSelector({
   );
 
   const keyExtractor = useCallback((item: CollegeMatch) => item.code, []);
-
-  const isResearchDisabled = selectedCodes.size === 0 || isLoading;
 
   return (
     <View style={styles.container}>
@@ -142,18 +145,6 @@ export default function CollegeSelector({
         ItemSeparatorComponent={() => <View style={styles.separator} />}
       />
 
-      {/* Footer */}
-      <TouchableOpacity
-        style={[styles.researchButton, isResearchDisabled && styles.researchButtonDisabled]}
-        onPress={onResearch}
-        disabled={isResearchDisabled}
-        accessibilityLabel={`Research selected colleges, ${selectedCodes.size} selected`}
-        hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-      >
-        <Text style={styles.researchButtonText}>
-          Research Selected ({selectedCodes.size})
-        </Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -229,6 +220,22 @@ const styles = StyleSheet.create({
     color: Colors.text,
     lineHeight: 20,
   },
+  badgesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  nirfBadge: {
+    backgroundColor: Colors.primaryLight,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  nirfBadgeText: {
+    fontSize: 10,
+    color: Colors.primary,
+    fontWeight: '700',
+  },
   code: {
     fontSize: 12,
     color: Colors.textSecondary,
@@ -264,20 +271,5 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: Colors.border,
     marginLeft: 46,
-  },
-  researchButton: {
-    margin: 14,
-    backgroundColor: Colors.primary,
-    borderRadius: 8,
-    paddingVertical: 13,
-    alignItems: 'center',
-  },
-  researchButtonDisabled: {
-    backgroundColor: Colors.gray300,
-  },
-  researchButtonText: {
-    color: Colors.white,
-    fontSize: 15,
-    fontWeight: '700',
   },
 });

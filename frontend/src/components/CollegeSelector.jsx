@@ -57,6 +57,11 @@ export default function CollegeSelector({ matches, onResearch, loading }) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium text-sm text-gray-900">{college.name}</span>
+                  {college.nirf_rank != null && (
+                    <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-semibold border border-blue-200">
+                      NIRF #{college.nirf_rank}
+                    </span>
+                  )}
                   <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded font-mono">
                     {college.code}
                   </span>

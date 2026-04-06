@@ -9,17 +9,21 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorBanner } from '@/components/ui/ErrorBanner';
 import CompareFloatingBar from '@/components/compare/CompareFloatingBar';
+import ResearchFloatingBar from '@/components/search/ResearchFloatingBar';
 import { useSession } from '@/context/SessionContext';
 import { useCompare } from '@/context/CompareContext';
 import { Colors } from '@/constants/colors';
 
 const COMPARE_BAR_HEIGHT = 70;
+const RESEARCH_BAR_HEIGHT = 66;
 
 export default function SearchScreen() {
   const search = useSearch();
   const { addManyToFavorites } = useSession();
   const { compareList } = useCompare();
-  const extraPad = compareList.length > 0 ? COMPARE_BAR_HEIGHT : 0;
+  const compareBarPad = compareList.length > 0 ? COMPARE_BAR_HEIGHT : 0;
+  const researchBarPad = search.phase === 'selecting' ? RESEARCH_BAR_HEIGHT : 0;
+  const extraPad = compareBarPad + researchBarPad;
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -45,8 +49,6 @@ export default function SearchScreen() {
             onToggle={search.toggleCode}
             onSelectAll={search.selectAll}
             onDeselectAll={search.deselectAll}
-            onResearch={search.handleResearch}
-            isLoading={false}
           />
         )}
 
@@ -78,6 +80,15 @@ export default function SearchScreen() {
           />
         )}
       </ScrollView>
+      {search.phase === 'selecting' && (
+        <ResearchFloatingBar
+          selectedCount={search.selectedCodes.size}
+          totalCount={search.matches.length}
+          onResearch={search.handleResearch}
+          isLoading={search.phase === 'researching'}
+          bottomOffset={compareBarPad}
+        />
+      )}
       <CompareFloatingBar />
     </SafeAreaView>
   );

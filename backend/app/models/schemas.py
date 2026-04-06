@@ -57,6 +57,7 @@ class CollegeMatch(BaseModel):
     district: str
     affiliation: str
     courses: list[str] = []
+    nirf_rank: Optional[int] = None
 
 
 class SearchResponse(BaseModel):

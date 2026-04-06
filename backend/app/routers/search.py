@@ -56,7 +56,13 @@ def _to_match(c: dict) -> CollegeMatch:
         district=c["district"],
         affiliation=c["affiliation"],
         courses=[course["branch_name"] for course in c.get("courses", [])],
+        nirf_rank=c.get("nirf_rank"),
     )
+
+
+def _sort_by_rank(colleges: list[dict]) -> list[dict]:
+    """Sort colleges by NIRF rank ascending (ranked colleges first, unranked last)."""
+    return sorted(colleges, key=lambda c: (c.get("nirf_rank") is None, c.get("nirf_rank") or 0))
 
 
 @router.get("/search", response_model=SearchResponse)
@@ -74,6 +80,7 @@ async def search_colleges(
         if not q:
             raise HTTPException(400, "q is required for code search")
         matches = [c for c in colleges if c["code"] == q.strip()]
+        matches = _sort_by_rank(matches)
         return SearchResponse(matches=[_to_match(c) for c in matches], exact=len(matches) == 1)
 
     if type == "name":
@@ -91,6 +98,7 @@ async def search_colleges(
         # Use WRatio for robust matching (handles abbreviations, partial words)
         results = process.extract(search_query, search_names, scorer=fuzz.WRatio, limit=20)
         matched = [colleges[idx] for _, score, idx in results if score >= 70]
+        matched = _sort_by_rank(matched)
         exact = len(matched) == 1
         return SearchResponse(matches=[_to_match(c) for c in matched], exact=exact)
 
@@ -120,6 +128,7 @@ async def search_colleges(
                 if cutoff_val is not None and cutoff_val <= mark:
                     matched.append(college)
                     break  # one match per college is enough
+        matched = _sort_by_rank(matched)
         return SearchResponse(matches=[_to_match(c) for c in matched], exact=False)
 
     raise HTTPException(400, "Invalid search type")

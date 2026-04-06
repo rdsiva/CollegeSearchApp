@@ -5,6 +5,7 @@ export interface CollegeMatch {
   district: string;
   affiliation: string;
   courses: string[];
+  nirf_rank?: number | null;
 }
 
 export interface SearchResult {
