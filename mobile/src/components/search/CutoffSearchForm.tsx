@@ -173,10 +173,11 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
+    paddingVertical: 14,
+    fontSize: 16,
     color: Colors.text,
     backgroundColor: Colors.white,
+    minHeight: 54,
   },
   inputError: {
     borderColor: Colors.danger,
@@ -192,10 +193,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: Colors.white,
     overflow: 'hidden',
+    minHeight: 54,
+    justifyContent: 'center',
   },
   picker: {
     color: Colors.text,
-    height: 48,
+    height: 54,
+    fontSize: 16,
   },
   chipsScroll: {
     flexGrow: 0,

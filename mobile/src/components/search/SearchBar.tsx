@@ -154,21 +154,22 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: Colors.white,
     paddingHorizontal: 10,
+    minHeight: 54,
   },
   inputIcon: {
     marginRight: 6,
   },
   textInput: {
     flex: 1,
-    paddingVertical: 10,
-    fontSize: 15,
+    paddingVertical: 14,
+    fontSize: 16,
     color: Colors.text,
   },
   searchButton: {
     backgroundColor: Colors.primary,
     borderRadius: 8,
     paddingHorizontal: 16,
-    paddingVertical: 11,
+    paddingVertical: 15,
   },
   searchButtonDisabled: {
     backgroundColor: Colors.gray300,
