@@ -110,4 +110,5 @@ export interface SearchParams {
   course?: string;
   courses?: string[];
   year?: string;
+  district?: string;
 }

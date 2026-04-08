@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Hash, TrendingDown } from 'lucide-react';
+import { Search, Hash, TrendingDown, MapPin } from 'lucide-react';
 import CutoffSearchForm from './CutoffSearchForm';
 
 const MODES = [
@@ -8,14 +8,29 @@ const MODES = [
   { id: 'cutoff', label: 'By Cutoff', icon: TrendingDown },
 ];
 
+const DISTRICTS = [
+  'Ariyalur', 'Chennai', 'Coimbatore', 'Cuddalore', 'Dharmapuri',
+  'Dindigul', 'Erode', 'Kanchipuram', 'Kanyakumari', 'Karur',
+  'Krishnagiri', 'Madurai', 'Nagapattinam', 'Namakkal', 'Perambalur',
+  'Pudukkottai', 'Ramanathapuram', 'Salem', 'Sivaganga', 'Thanjavur',
+  'Theni', 'Thiruvarur', 'Thoothukudi', 'Tiruchirappalli', 'Tirunelveli',
+  'Tirupur', 'Tiruvallur', 'Tiruvannamalai', 'Vellore', 'Villupuram',
+  'Virudhunagar',
+];
+
 export default function SearchBar({ onSearch, loading }) {
   const [mode, setMode] = useState('name');
   const [query, setQuery] = useState('');
+  const [district, setDistrict] = useState('');
 
   function handleSubmit(e) {
     e.preventDefault();
     if (!query.trim()) return;
-    onSearch({ type: mode, q: query.trim() });
+    onSearch({ type: mode, q: query.trim(), district: district || undefined });
+  }
+
+  function handleCutoffSearch(params) {
+    onSearch({ ...params, district: district || undefined });
   }
 
   return (
@@ -38,8 +53,29 @@ export default function SearchBar({ onSearch, loading }) {
         ))}
       </div>
 
+      {/* Location filter — shared across all modes */}
+      <div className="flex items-center gap-2 mb-4 pb-4 border-b border-gray-100">
+        <MapPin size={14} className="text-gray-400 flex-shrink-0" />
+        <label className="text-xs font-medium text-gray-600 whitespace-nowrap">Location</label>
+        <select
+          value={district}
+          onChange={(e) => setDistrict(e.target.value)}
+          className="flex-1 max-w-xs px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
+        >
+          <option value="">All Districts</option>
+          {DISTRICTS.map((d) => (
+            <option key={d} value={d}>{d}</option>
+          ))}
+        </select>
+        {district && (
+          <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-md">
+            Includes nearby districts
+          </span>
+        )}
+      </div>
+
       {mode === 'cutoff' ? (
-        <CutoffSearchForm onSearch={onSearch} loading={loading} />
+        <CutoffSearchForm onSearch={handleCutoffSearch} loading={loading} />
       ) : (
         <form onSubmit={handleSubmit} className="flex gap-3">
           <input

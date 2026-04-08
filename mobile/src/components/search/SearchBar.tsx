@@ -10,6 +10,7 @@ import { Feather } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 import type { SearchParams, SearchMode } from '@/types';
 import CutoffSearchForm from './CutoffSearchForm';
+import { DistrictPicker } from './DistrictPicker';
 
 interface SearchBarProps {
   onSearch: (params: SearchParams) => void;
@@ -24,6 +25,7 @@ const MODES: { label: string; value: SearchMode }[] = [
 export default function SearchBar({ onSearch }: SearchBarProps) {
   const [mode, setMode] = useState<SearchMode>('name');
   const [query, setQuery] = useState<string>('');
+  const [district, setDistrict] = useState<string | undefined>(undefined);
 
   const handleTextSearch = () => {
     let q = query.trim();
@@ -35,7 +37,7 @@ export default function SearchBar({ onSearch }: SearchBarProps) {
       q = q.slice(0, 200);
     }
     if (q === '') return;
-    onSearch({ type: mode, q });
+    onSearch({ type: mode, q, district });
   };
 
   return (
@@ -58,6 +60,14 @@ export default function SearchBar({ onSearch }: SearchBarProps) {
             </Text>
           </TouchableOpacity>
         ))}
+      </View>
+
+      {/* Location filter */}
+      <View style={styles.locationRow}>
+        <DistrictPicker value={district} onChange={setDistrict} />
+        {district && (
+          <Text style={styles.nearbyHint}>Includes nearby districts</Text>
+        )}
       </View>
 
       {/* Text input modes */}
@@ -100,7 +110,9 @@ export default function SearchBar({ onSearch }: SearchBarProps) {
       )}
 
       {/* Cutoff form */}
-      {mode === 'cutoff' && <CutoffSearchForm onSearch={onSearch} />}
+      {mode === 'cutoff' && (
+        <CutoffSearchForm onSearch={(params) => onSearch({ ...params, district })} />
+      )}
     </View>
   );
 }
@@ -120,7 +132,18 @@ const styles = StyleSheet.create({
   tabs: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 12,
+    marginBottom: 10,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  nearbyHint: {
+    fontSize: 11,
+    color: Colors.primary,
+    fontStyle: 'italic',
   },
   tab: {
     flex: 1,

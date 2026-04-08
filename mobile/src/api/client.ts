@@ -21,6 +21,7 @@ export async function searchColleges(params: SearchParams): Promise<SearchResult
   if (params.category) url.searchParams.set('category', params.category);
   if (params.course) url.searchParams.set('course', params.course);
   if (params.year) url.searchParams.set('year', params.year);
+  if (params.district) url.searchParams.set('district', params.district);
 
   const res = await fetchWithTimeout(url.toString());
   if (!res.ok) throw new Error(`Search failed: ${res.status}`);

@@ -6,6 +6,41 @@ from fastapi import APIRouter, Query, HTTPException
 from rapidfuzz import process, fuzz
 from app.models.schemas import SearchResponse, CollegeMatch
 
+# Neighboring districts for "in and around" location filtering
+_DISTRICT_NEIGHBORS: dict[str, list[str]] = {
+    "Chennai": ["Tiruvallur", "Kanchipuram"],
+    "Tiruvallur": ["Chennai", "Kanchipuram"],
+    "Kanchipuram": ["Chennai", "Tiruvallur", "Vellore", "Villupuram"],
+    "Vellore": ["Kanchipuram", "Tiruvannamalai", "Krishnagiri"],
+    "Tiruvannamalai": ["Vellore", "Villupuram", "Dharmapuri"],
+    "Villupuram": ["Kanchipuram", "Cuddalore", "Tiruvannamalai"],
+    "Cuddalore": ["Villupuram", "Nagapattinam", "Thiruvarur"],
+    "Nagapattinam": ["Cuddalore", "Thiruvarur", "Thanjavur"],
+    "Thiruvarur": ["Cuddalore", "Nagapattinam", "Thanjavur"],
+    "Thanjavur": ["Tiruchirappalli", "Nagapattinam", "Thiruvarur", "Pudukkottai"],
+    "Tiruchirappalli": ["Thanjavur", "Perambalur", "Ariyalur", "Karur", "Namakkal", "Pudukkottai"],
+    "Ariyalur": ["Tiruchirappalli", "Perambalur"],
+    "Perambalur": ["Tiruchirappalli", "Ariyalur", "Namakkal"],
+    "Karur": ["Tiruchirappalli", "Erode", "Namakkal", "Dindigul", "Tirupur"],
+    "Namakkal": ["Salem", "Erode", "Karur", "Tiruchirappalli"],
+    "Salem": ["Dharmapuri", "Namakkal", "Erode", "Krishnagiri"],
+    "Dharmapuri": ["Salem", "Krishnagiri", "Tiruvannamalai"],
+    "Krishnagiri": ["Dharmapuri", "Salem", "Vellore"],
+    "Erode": ["Salem", "Namakkal", "Coimbatore", "Tirupur", "Karur"],
+    "Coimbatore": ["Tirupur", "Erode"],
+    "Tirupur": ["Coimbatore", "Erode", "Karur", "Dindigul"],
+    "Dindigul": ["Madurai", "Theni", "Karur", "Tirupur"],
+    "Madurai": ["Dindigul", "Theni", "Sivaganga", "Virudhunagar", "Ramanathapuram"],
+    "Theni": ["Madurai", "Dindigul", "Virudhunagar"],
+    "Virudhunagar": ["Madurai", "Theni", "Thoothukudi", "Tirunelveli", "Sivaganga", "Ramanathapuram"],
+    "Sivaganga": ["Madurai", "Ramanathapuram", "Pudukkottai"],
+    "Pudukkottai": ["Tiruchirappalli", "Thanjavur", "Sivaganga"],
+    "Ramanathapuram": ["Sivaganga", "Virudhunagar", "Thoothukudi"],
+    "Thoothukudi": ["Tirunelveli", "Virudhunagar", "Ramanathapuram"],
+    "Tirunelveli": ["Thoothukudi", "Kanyakumari", "Virudhunagar"],
+    "Kanyakumari": ["Tirunelveli"],
+}
+
 # Words to strip when doing fuzzy name matching so generic terms don't inflate scores
 _STOP_WORDS = {
     "college", "of", "engineering", "technology", "institute", "and",
@@ -65,6 +100,24 @@ def _sort_by_rank(colleges: list[dict]) -> list[dict]:
     return sorted(colleges, key=lambda c: (c.get("nirf_rank") is None, c.get("nirf_rank") or 0))
 
 
+def _filter_by_district(colleges: list[dict], district: str) -> list[dict]:
+    """Keep colleges whose district matches the selected district or a neighboring district."""
+    target = district.strip().title()
+    allowed = {target} | set(_DISTRICT_NEIGHBORS.get(target, []))
+    return [c for c in colleges if c.get("district", "") in allowed]
+
+
+@router.get("/districts", response_model=list[str])
+async def list_districts():
+    """Return the sorted list of distinct districts that have at least one college."""
+    colleges = load_seed()
+    districts = sorted(
+        {c.get("district", "") for c in colleges if c.get("district") and c.get("district") != "Tamil Nadu"},
+        key=str.lower,
+    )
+    return districts
+
+
 @router.get("/search", response_model=SearchResponse)
 async def search_colleges(
     q: Optional[str] = Query(None),
@@ -73,6 +126,7 @@ async def search_colleges(
     category: Optional[str] = Query(None, regex="^(OC|BC|BCM|MBC|SC|ST|SCA)$"),
     course: Optional[str] = Query(None),
     year: str = Query("2026", regex="^(2024|2025|2026)$"),
+    district: Optional[str] = Query(None, max_length=50),
 ):
     colleges = load_seed()
 
@@ -80,6 +134,8 @@ async def search_colleges(
         if not q:
             raise HTTPException(400, "q is required for code search")
         matches = [c for c in colleges if c["code"] == q.strip()]
+        if district:
+            matches = _filter_by_district(matches, district)
         matches = _sort_by_rank(matches)
         return SearchResponse(matches=[_to_match(c) for c in matches], exact=len(matches) == 1)
 
@@ -98,6 +154,8 @@ async def search_colleges(
         # Use WRatio for robust matching (handles abbreviations, partial words)
         results = process.extract(search_query, search_names, scorer=fuzz.WRatio, limit=20)
         matched = [colleges[idx] for _, score, idx in results if score >= 70]
+        if district:
+            matched = _filter_by_district(matched, district)
         matched = _sort_by_rank(matched)
         exact = len(matched) == 1
         return SearchResponse(matches=[_to_match(c) for c in matched], exact=exact)
@@ -128,6 +186,8 @@ async def search_colleges(
                 if cutoff_val is not None and cutoff_val <= mark:
                     matched.append(college)
                     break  # one match per college is enough
+        if district:
+            matched = _filter_by_district(matched, district)
         matched = _sort_by_rank(matched)
         return SearchResponse(matches=[_to_match(c) for c in matched], exact=False)
 

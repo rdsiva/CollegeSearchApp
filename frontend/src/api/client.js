@@ -5,12 +5,14 @@ const api = axios.create({
   timeout: 30000,
 });
 
-export async function searchColleges({ q, type, mark, category, course }) {
+export async function searchColleges({ q, type, mark, category, course, year, district }) {
   const params = { type };
   if (q) params.q = q;
   if (mark !== undefined) params.mark = mark;
   if (category) params.category = category;
   if (course) params.course = course;
+  if (year) params.year = year;
+  if (district) params.district = district;
   const res = await api.get('/search', { params });
   return res.data;
 }
