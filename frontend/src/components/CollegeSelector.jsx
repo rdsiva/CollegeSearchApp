@@ -1,8 +1,20 @@
 import { useState } from 'react';
-import { MapPin, BookOpen, CheckSquare, Square, ChevronRight, Loader2 } from 'lucide-react';
+import { MapPin, BookOpen, CheckSquare, Square, ChevronRight, ChevronLeft, Loader2, AlertTriangle } from 'lucide-react';
+
+const MAX_RESEARCH = 5;
+
+// Compute page size from viewport height: each row ~72px, overhead ~240px
+function getPageSize() {
+  return Math.max(5, Math.min(20, Math.floor((window.innerHeight - 240) / 72)));
+}
 
 export default function CollegeSelector({ matches, onResearch, loading }) {
   const [selected, setSelected] = useState(new Set());
+  const [page, setPage] = useState(0);
+
+  const PAGE_SIZE = getPageSize();
+  const totalPages = Math.ceil(matches.length / PAGE_SIZE);
+  const visible = matches.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   function toggle(code) {
     setSelected((prev) => {
@@ -20,16 +32,24 @@ export default function CollegeSelector({ matches, onResearch, loading }) {
 
   function handleResearch() {
     if (selected.size === 0) return;
-    onResearch([...selected]);
+    const codes = [...selected].slice(0, MAX_RESEARCH);
+    onResearch(codes);
   }
 
   const allSelected = selected.size === matches.length && matches.length > 0;
+  const overLimit = selected.size > MAX_RESEARCH;
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+      {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
         <span className="text-sm font-semibold text-gray-700">
-          {matches.length} college{matches.length !== 1 ? 's' : ''} found — select to research
+          {matches.length} college{matches.length !== 1 ? 's' : ''} found
+          {totalPages > 1 && (
+            <span className="text-gray-400 font-normal ml-1">
+              · page {page + 1} of {totalPages}
+            </span>
+          )}
         </span>
         <button
           onClick={toggleAll}
@@ -40,8 +60,9 @@ export default function CollegeSelector({ matches, onResearch, loading }) {
         </button>
       </div>
 
-      <div className="divide-y divide-gray-50 max-h-80 overflow-y-auto">
-        {matches.map((college) => {
+      {/* College list */}
+      <div className="divide-y divide-gray-50">
+        {visible.map((college) => {
           const isChecked = selected.has(college.code);
           return (
             <button
@@ -93,10 +114,42 @@ export default function CollegeSelector({ matches, onResearch, loading }) {
         })}
       </div>
 
-      <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50">
-        <span className="text-sm text-gray-500">
-          {selected.size > 0 ? `${selected.size} selected` : 'Select colleges above'}
-        </span>
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 px-5 py-3 border-t border-gray-100 bg-gray-50">
+          <button
+            onClick={() => setPage((p) => p - 1)}
+            disabled={page === 0}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <ChevronLeft size={13} /> Prev
+          </button>
+          <span className="text-xs text-gray-500 tabular-nums">
+            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, matches.length)} of {matches.length}
+          </span>
+          <button
+            onClick={() => setPage((p) => p + 1)}
+            disabled={page >= totalPages - 1}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Next <ChevronRight size={13} />
+          </button>
+        </div>
+      )}
+
+      {/* Footer */}
+      <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50 flex-wrap gap-2">
+        <div className="flex flex-col gap-1">
+          <span className="text-sm text-gray-500">
+            {selected.size > 0 ? `${selected.size} selected` : 'Select colleges above'}
+          </span>
+          {overLimit && (
+            <span className="flex items-center gap-1 text-xs text-amber-600">
+              <AlertTriangle size={12} />
+              Only {MAX_RESEARCH} will be researched at a time
+            </span>
+          )}
+        </div>
         <button
           onClick={handleResearch}
           disabled={selected.size === 0 || loading}
@@ -108,7 +161,7 @@ export default function CollegeSelector({ matches, onResearch, loading }) {
             </>
           ) : (
             <>
-              Research Selected <ChevronRight size={14} />
+              Research {overLimit ? `top ${MAX_RESEARCH}` : selected.size > 0 ? `(${selected.size})` : ''} <ChevronRight size={14} />
             </>
           )}
         </button>

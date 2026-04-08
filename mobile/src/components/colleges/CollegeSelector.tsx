@@ -1,14 +1,22 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
   FlatList,
   TouchableOpacity,
   StyleSheet,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 import type { CollegeMatch } from '@/types';
+
+const MAX_RESEARCH = 5;
+// Each row is ~115dp; subtract ~380dp for search bar + header + safe area + floating bars
+function getPageSize(screenHeight: number) {
+  return Math.max(3, Math.min(8, Math.floor((screenHeight - 380) / 115)));
+}
 
 interface CollegeSelectorProps {
   matches: CollegeMatch[];
@@ -16,8 +24,6 @@ interface CollegeSelectorProps {
   onToggle: (code: string) => void;
   onSelectAll: () => void;
   onDeselectAll: () => void;
-  onResearch: () => void;
-  isLoading: boolean;
 }
 
 const MAX_PILLS = 4;
@@ -94,7 +100,14 @@ export default function CollegeSelector({
   onToggle,
   onSelectAll,
   onDeselectAll,
-}: Omit<CollegeSelectorProps, 'onResearch' | 'isLoading'>) {
+}: CollegeSelectorProps) {
+  const { height } = useWindowDimensions();
+  const PAGE_SIZE = getPageSize(height);
+  const [page, setPage] = useState(0);
+  const totalPages = Math.ceil(matches.length / PAGE_SIZE);
+  const visible = matches.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const overLimit = selectedCodes.size > MAX_RESEARCH;
+
   const renderItem = useCallback(
     ({ item }: { item: CollegeMatch }) => (
       <CollegeRow
@@ -114,6 +127,9 @@ export default function CollegeSelector({
       <View style={styles.header}>
         <Text style={styles.headerTitle}>
           {matches.length} college{matches.length !== 1 ? 's' : ''} found
+          {totalPages > 1 && (
+            <Text style={styles.pageInfo}> · page {page + 1}/{totalPages}</Text>
+          )}
         </Text>
         <View style={styles.headerActions}>
           <TouchableOpacity
@@ -136,15 +152,53 @@ export default function CollegeSelector({
         </View>
       </View>
 
-      {/* List */}
+      {/* Over-limit warning */}
+      {overLimit && (
+        <View style={styles.limitWarning}>
+          <Feather name="alert-triangle" size={13} color={Colors.warning} />
+          <Text style={styles.limitWarningText}>
+            Only {MAX_RESEARCH} colleges will be researched at a time
+          </Text>
+        </View>
+      )}
+
+      {/* List (current page only) */}
       <FlatList
-        data={matches}
+        data={visible}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         scrollEnabled={false}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
       />
 
+      {/* Pagination controls */}
+      {totalPages > 1 && (
+        <View style={styles.pagination}>
+          <TouchableOpacity
+            style={[styles.pageBtn, page === 0 && styles.pageBtnDisabled]}
+            onPress={() => setPage((p) => p - 1)}
+            disabled={page === 0}
+            hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
+          >
+            <Feather name="chevron-left" size={16} color={page === 0 ? Colors.gray300 : Colors.primary} />
+            <Text style={[styles.pageBtnText, page === 0 && styles.pageBtnTextDisabled]}>Prev</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.pageRange}>
+            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, matches.length)} of {matches.length}
+          </Text>
+
+          <TouchableOpacity
+            style={[styles.pageBtn, page >= totalPages - 1 && styles.pageBtnDisabled]}
+            onPress={() => setPage((p) => p + 1)}
+            disabled={page >= totalPages - 1}
+            hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
+          >
+            <Text style={[styles.pageBtnText, page >= totalPages - 1 && styles.pageBtnTextDisabled]}>Next</Text>
+            <Feather name="chevron-right" size={16} color={page >= totalPages - 1 ? Colors.gray300 : Colors.primary} />
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
@@ -176,6 +230,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.gray700,
   },
+  pageInfo: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: Colors.gray400,
+  },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -192,6 +251,21 @@ const styles = StyleSheet.create({
   headerBtnSep: {
     fontSize: 13,
     color: Colors.gray300,
+  },
+  limitWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: Colors.warningLight,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  limitWarningText: {
+    fontSize: 12,
+    color: Colors.warning,
+    fontWeight: '500',
   },
   row: {
     flexDirection: 'row',
@@ -271,5 +345,43 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: Colors.border,
     marginLeft: 46,
+  },
+  pagination: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
+    backgroundColor: Colors.gray50,
+  },
+  pageBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.white,
+  },
+  pageBtnDisabled: {
+    backgroundColor: Colors.gray50,
+    borderColor: Colors.gray200,
+  },
+  pageBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.primary,
+  },
+  pageBtnTextDisabled: {
+    color: Colors.gray300,
+  },
+  pageRange: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    tabularNums: true,
   },
 });

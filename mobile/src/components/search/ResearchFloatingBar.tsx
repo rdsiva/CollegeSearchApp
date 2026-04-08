@@ -9,6 +9,8 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 
+const MAX_RESEARCH = 5;
+
 interface ResearchFloatingBarProps {
   selectedCount: number;
   totalCount: number;
@@ -24,11 +26,22 @@ export default function ResearchFloatingBar({
   isLoading,
   bottomOffset,
 }: ResearchFloatingBarProps) {
+  const overLimit = selectedCount > MAX_RESEARCH;
+  const researchCount = Math.min(selectedCount, MAX_RESEARCH);
+
   return (
     <View style={[styles.bar, { bottom: bottomOffset }]}>
-      <Text style={styles.countText}>
-        {selectedCount} of {totalCount} selected
-      </Text>
+      <View style={styles.left}>
+        <Text style={styles.countText}>
+          {selectedCount} of {totalCount} selected
+        </Text>
+        {overLimit && (
+          <View style={styles.limitRow}>
+            <Feather name="alert-triangle" size={11} color={Colors.warning} />
+            <Text style={styles.limitText}>Max {MAX_RESEARCH} per research batch</Text>
+          </View>
+        )}
+      </View>
       <TouchableOpacity
         style={[
           styles.researchBtn,
@@ -36,7 +49,7 @@ export default function ResearchFloatingBar({
         ]}
         onPress={onResearch}
         disabled={selectedCount === 0 || isLoading}
-        accessibilityLabel={`Research ${selectedCount} selected colleges`}
+        accessibilityLabel={`Research ${researchCount} selected colleges`}
         hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
       >
         {isLoading ? (
@@ -45,7 +58,7 @@ export default function ResearchFloatingBar({
           <>
             <Feather name="zoom-in" size={15} color={Colors.white} />
             <Text style={styles.researchBtnText}>
-              Research ({selectedCount})
+              Research ({researchCount}{overLimit ? ` of ${selectedCount}` : ''})
             </Text>
           </>
         )}
@@ -63,7 +76,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: Colors.border,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: 10,
+    paddingBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -73,10 +87,24 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 10,
   },
+  left: {
+    flex: 1,
+    marginRight: 12,
+  },
   countText: {
     fontSize: 14,
     fontWeight: '600',
     color: Colors.textSecondary,
+  },
+  limitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  limitText: {
+    fontSize: 11,
+    color: Colors.warning,
   },
   researchBtn: {
     flexDirection: 'row',

@@ -4,10 +4,23 @@ import type { CollegeMatch, CollegeDetail, SearchParams, SearchResult } from '@/
 
 export type SearchPhase = 'idle' | 'searching' | 'selecting' | 'researching' | 'results';
 
+const MAX_RESEARCH = 5;
+
+function mergeInto(prev: CollegeDetail[], incoming: CollegeDetail[]): CollegeDetail[] {
+  const existingCodes = new Set(prev.map((c) => c.code));
+  const fresh = incoming.filter((c) => !existingCodes.has(c.code));
+  const updated = prev.map((c) => {
+    const refreshed = incoming.find((n) => n.code === c.code);
+    return refreshed ?? c;
+  });
+  return [...fresh, ...updated]; // newest first
+}
+
 export function useSearch() {
   const [phase, setPhase] = useState<SearchPhase>('idle');
   const [matches, setMatches] = useState<CollegeMatch[]>([]);
   const [results, setResults] = useState<CollegeDetail[]>([]);
+  const [researchedColleges, setResearchedColleges] = useState<CollegeDetail[]>([]); // session cache
   const [selectedCodes, setSelectedCodes] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
@@ -45,6 +58,7 @@ export function useSearch() {
         setPhase('researching');
         const detail = await researchColleges([data.matches[0].code]);
         setResults(detail);
+        setResearchedColleges((prev) => mergeInto(prev, detail));
         setPhase('results');
       } else {
         setMatches(data.matches);
@@ -52,7 +66,6 @@ export function useSearch() {
         setPhase('selecting');
       }
     } catch (e) {
-      // M3: show generic message to avoid leaking server error details
       console.error('Search error:', e);
       setError('Search failed. Please check your connection and try again.');
       setPhase('idle');
@@ -64,12 +77,12 @@ export function useSearch() {
     setError(null);
     setPhase('researching');
     try {
-      const codes = Array.from(selectedCodes);
+      const codes = Array.from(selectedCodes).slice(0, MAX_RESEARCH);
       const detail = await researchColleges(codes);
       setResults(detail);
+      setResearchedColleges((prev) => mergeInto(prev, detail));
       setPhase('results');
     } catch (e) {
-      // M3: show generic message to avoid leaking server error details
       console.error('Research error:', e);
       setError('Could not load college details. Please try again.');
       setPhase('selecting');
@@ -91,25 +104,31 @@ export function useSearch() {
 
   const deselectAll = useCallback(() => setSelectedCodes(new Set()), []);
 
+  const clearResearched = useCallback(() => setResearchedColleges([]), []);
+
   const reset = useCallback(() => {
     setPhase('idle');
     setMatches([]);
     setResults([]);
     setSelectedCodes(new Set());
     setError(null);
+    // researchedColleges intentionally kept — persists for session
   }, []);
 
   return {
     phase,
     matches,
     results,
+    researchedColleges,
     selectedCodes,
     error,
+    maxResearch: MAX_RESEARCH,
     handleSearch,
     handleResearch,
     toggleCode,
     selectAll,
     deselectAll,
+    clearResearched,
     reset,
   };
 }
