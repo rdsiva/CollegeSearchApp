@@ -53,3 +53,7 @@ backend/tnea_*.json
 backend/rebuild_seed.py
 backend/enrich_seed.py
 backend/update_cutoffs_2025.py
+backend/backfill_predicted_cutoffs.py
+
+# ── Backups ─────────────────────────────────────────────
+*.bak

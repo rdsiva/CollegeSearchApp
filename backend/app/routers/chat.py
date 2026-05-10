@@ -4,7 +4,8 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
-from app.services import claude_ai
+from app.services import llm
+from app.cache import research_cache
 from app.limiter import limiter
 
 router = APIRouter()
@@ -41,10 +42,28 @@ class ChatResponse(BaseModel):
 
 
 def _load_college(code: str) -> dict | None:
+    # Prefer cached research result — it has LLM-predicted 2026 cutoffs filled in.
+    cached = research_cache.get(code)
+    if cached is not None:
+        return cached.model_dump()
+
     seed_path = Path(__file__).parent.parent / "data" / "colleges_seed.json"
     with open(seed_path, encoding="utf-8") as f:
         colleges = json.load(f)
-    return next((c for c in colleges if c["code"] == code), None)
+    college = next((c for c in colleges if c["code"] == code), None)
+    if college is None:
+        return None
+
+    # Fill in heuristic 2026 predictions for any course that lacks them, so the
+    # chat can answer "what's the predicted 2026 cutoff?" without requiring a
+    # prior /research call. Skipped courses (no 2024/2025 OC) stay empty.
+    missing = [c for c in college.get("courses", []) if not c.get("cutoffs_2026_predicted")]
+    if missing:
+        predicted = llm._fallback_predict_cutoffs(missing)
+        for c in college["courses"]:
+            if not c.get("cutoffs_2026_predicted") and c["branch_code"] in predicted:
+                c["cutoffs_2026_predicted"] = predicted[c["branch_code"]].model_dump()
+    return college
 
 
 def _build_context(college: dict) -> str:
@@ -143,7 +162,10 @@ async def _fallback_answer(message: str, college: dict) -> str:
     if any(w in msg for w in ["placement", "package", "salary", "lpa", "job", "recruit", "company"]):
         p = college.get("placement")
         if not p:
-            return "Placement data is not available for this college."
+            return (
+                "Placement data hasn't been collected for this college yet. "
+                "I can share cutoffs, fees, or courses if that helps."
+            )
         lines = [f"Placements at {college['name']}:"]
         if p.get("avg_lpa"):
             lines.append(f"  Average package: {p['avg_lpa']} LPA")
@@ -173,16 +195,7 @@ async def _fallback_answer(message: str, college: dict) -> str:
 @limiter.limit("20/minute")
 async def chat(request: Request, req: ChatRequest):
     college = None
-    system_prompt = (
-        "You are a helpful Tamil Nadu engineering college counselor assisting students with "
-        "TNEA 2026 admissions. Be concise, factual, and friendly.\n\n"
-        "Formatting rules (always follow these):\n"
-        "- Use ## for section headers\n"
-        "- Use bullet points with - for lists\n"
-        "- Use **bold** for key numbers and important values\n"
-        "- When quoting cutoffs, always clarify whether they are 2024 actual, 2025 expected, or 2026 predicted\n"
-        "- Keep answers well-structured with clear sections"
-    )
+    system_prompt = "You are a friendly counselor for Tamil Nadu engineering admissions (TNEA 2026). Answer concisely."
 
     if req.college_code:
         college = _load_college(req.college_code)
@@ -190,17 +203,11 @@ async def chat(request: Request, req: ChatRequest):
             raise HTTPException(404, f"College {req.college_code} not found")
         context = _build_context(college)
         system_prompt = (
-            f"You are a Tamil Nadu engineering college counselor. The student is asking about:\n\n"
-            f"{context}\n\n"
-            "Answer questions about this college based on the data above.\n\n"
-            "Formatting rules (important — always follow these):\n"
-            "- Use ## for section headers (e.g., ## Cutoff Marks, ## Fees, ## Placements)\n"
-            "- Use bullet points with - for lists\n"
-            "- Use **bold** for key numbers, branch names, and important values\n"
-            "- Keep answers concise but well-structured\n"
-            "- For cutoffs, always clarify the year (2024 actual / 2025 expected / 2026 predicted)\n"
-            "- If data is not available, say so honestly\n"
-            "- Never use plain paragraphs for data — always use headers and bullets"
+            "You are a TNEA 2026 counselor. Use only the data below to answer the student's question. "
+            "Be concise. If specific data the student asks about isn't in the table below, say it "
+            "hasn't been collected for this college yet, and offer to share what is available "
+            "(cutoffs, fees, courses, NIRF rank).\n\n"
+            f"{context}"
         )
 
     # Build message history for Claude
@@ -208,14 +215,9 @@ async def chat(request: Request, req: ChatRequest):
     messages.append({"role": "user", "content": req.message})
 
     try:
-        client = claude_ai.get_client()
-        resp = await client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=600,
-            system=system_prompt,
-            messages=messages,
-        )
-        reply = resp.content[0].text.strip()
+        reply = await llm.chat(messages=messages, system=system_prompt)
+        if not reply:
+            raise RuntimeError("empty reply")
     except Exception:
         # Fallback to data-driven answer
         if college:
@@ -223,8 +225,9 @@ async def chat(request: Request, req: ChatRequest):
         else:
             reply = (
                 "I can answer questions about specific colleges. "
-                "Click **Ask AI** on any college card to chat about it. "
-                "*(AI service is temporarily unavailable — please update ANTHROPIC_API_KEY)*"
+                "Click **Ask AI** on any college card to chat about it.\n\n"
+                "*(The AI assistant didn't return a reply just now — please try again "
+                "in a moment.)*"
             )
 
     suggestions = _build_suggestions(college) if college else []
