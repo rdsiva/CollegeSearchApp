@@ -16,6 +16,8 @@ services:
       ENVIRONMENT: production
       CORS_ORIGIN: https://counsellinghelp.s2rdlabs.com
       LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
+      CHAT_PROVIDER: ${CHAT_PROVIDER:-}
+      RESEARCH_PROVIDER: ${RESEARCH_PROVIDER:-}
       OLLAMA_URL: ${OLLAMA_URL:-http://192.168.40.68:11434/v1}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma4:e4b}
       OLLAMA_MODEL_CHAT: ${OLLAMA_MODEL_CHAT:-}

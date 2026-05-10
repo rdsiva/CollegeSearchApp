@@ -1,11 +1,13 @@
 """Provider-agnostic LLM client.
 
-Backend selected via LLM_PROVIDER env var:
-  - "anthropic" (default): Claude API via the anthropic SDK
-  - "ollama": OpenAI-compatible endpoint exposed by Ollama (or any OpenAI-compatible
-    server). OLLAMA_URL must point at the base URL including `/v1`,
-    e.g. http://192.168.40.68:11434/v1. OLLAMA_API_KEY can be any non-empty string
-    for Ollama; for real OpenAI use a genuine key.
+Provider selection (per-task, with LLM_PROVIDER as fallback default):
+  - LLM_PROVIDER       — default for any task without a more specific override
+  - CHAT_PROVIDER      — used by chat() (interactive student chat)
+  - RESEARCH_PROVIDER  — used by summarize_reviews() and predict_cutoffs_2026()
+                         (review summarisation + cutoff prediction)
+
+Each accepts "anthropic" (Claude API via the anthropic SDK) or "ollama"
+(OpenAI-compatible endpoint, e.g. http://host:11434/v1).
 
 Public surface (matches the call sites in routers/colleges.py and routers/chat.py):
   - summarize_reviews(college_name, google_reviews, youtube_descriptions) -> ReviewSummary
@@ -14,12 +16,19 @@ Public surface (matches the call sites in routers/colleges.py and routers/chat.p
 """
 import os
 import json
+import logging
 import httpx
 import anthropic
 from app.models.schemas import ReviewSummary, CourseCutoffs
 
+log = logging.getLogger(__name__)
 
-PROVIDER = os.getenv("LLM_PROVIDER", "anthropic").lower()
+
+_DEFAULT_PROVIDER = (os.getenv("LLM_PROVIDER") or "anthropic").lower()
+# `or` (not the getenv default) so an empty-string env var also falls back —
+# docker-compose's ${VAR:-} expands to "" when VAR is unset.
+CHAT_PROVIDER = (os.getenv("CHAT_PROVIDER") or _DEFAULT_PROVIDER).lower()
+RESEARCH_PROVIDER = (os.getenv("RESEARCH_PROVIDER") or _DEFAULT_PROVIDER).lower()
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://192.168.40.68:11434/v1").rstrip("/")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:e4b")  # used for research (JSON-output prompts)
 OLLAMA_MODEL_CHAT = os.getenv("OLLAMA_MODEL_CHAT", "") or OLLAMA_MODEL  # fallback to OLLAMA_MODEL
@@ -93,9 +102,10 @@ async def _complete(
     system: str | None,
     max_tokens: int,
     anthropic_model: str,
+    provider: str = RESEARCH_PROVIDER,
 ) -> str:
     """Provider dispatch — Ollama uses a single model regardless of task."""
-    if PROVIDER == "ollama":
+    if provider == "ollama":
         return await _ollama_complete(messages, system, max_tokens)
     return await _anthropic_complete(messages, system, max_tokens, anthropic_model)
 
@@ -258,13 +268,22 @@ Return ONLY a JSON array, no other text:
 
 
 async def chat(messages: list[dict], system: str) -> str:
-    """One-shot chat completion. Falls back to empty string on failure (caller handles)."""
-    if PROVIDER == "ollama":
+    """One-shot chat completion.
+
+    When CHAT_PROVIDER=anthropic, falls back to Ollama if Anthropic errors
+    (e.g. usage cap, rate limit, network). Ollama replies still beat the
+    data-dump templated fallback the chat router uses when this raises.
+    """
+    if CHAT_PROVIDER == "ollama":
         # Headroom matters for the gemma reasoning models — they emit thoughts
         # alongside content. Empty `content` falls back to `reasoning` in the
         # client. 600 tokens covers most replies in 15-25s on gemma4:31b.
         return await _ollama_complete(messages, system, max_tokens=600, model=OLLAMA_MODEL_CHAT)
-    return await _anthropic_complete(messages, system, max_tokens=600, model=ANTHROPIC_MODEL_FAST)
+    try:
+        return await _anthropic_complete(messages, system, max_tokens=600, model=ANTHROPIC_MODEL_FAST)
+    except Exception as e:
+        log.warning("Anthropic chat failed (%s) — falling back to Ollama", e)
+        return await _ollama_complete(messages, system, max_tokens=600, model=OLLAMA_MODEL_CHAT)
 
 
 # ─── Heuristic fallbacks (used when LLM call fails) ──────────────────────────

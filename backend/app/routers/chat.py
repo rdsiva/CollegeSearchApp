@@ -146,6 +146,21 @@ async def _fallback_answer(message: str, college: dict) -> str:
             lines.append(f"**{c['branch_name']}**\n  2024: {oc24} | 2025 expected: {oc25} | 2026 predicted: {oc26}")
         return "\n".join(lines)
 
+    if any(w in msg for w in ["hostel", "dorm", "accommodation", "stay", "room", "mess"]):
+        fees = college.get("fees") or {}
+        hostel_fee = fees.get("hostel")
+        if hostel_fee:
+            return (
+                f"Hostel at {college['name']}:\n"
+                f"  Annual fee: ₹{hostel_fee:,}\n"
+                f"\nDetailed facility info (rooms, mess, amenities) hasn't been "
+                f"collected for this college yet."
+            )
+        return (
+            f"Hostel facility details haven't been collected for {college['name']} yet. "
+            f"I can share cutoffs, course fees, or placements if that helps."
+        )
+
     if any(w in msg for w in ["fee", "cost", "price", "money", "rupee"]):
         fees = college.get("fees")
         if not fees:
@@ -187,7 +202,7 @@ async def _fallback_answer(message: str, college: dict) -> str:
     # Generic fallback
     return (
         f"Here is what I know about {college['name']}:\n\n{context}\n\n"
-        "*(AI summarization is temporarily unavailable. Please update the ANTHROPIC_API_KEY in backend/.env for full AI answers.)*"
+        "*(Conversational replies are temporarily unavailable — showing raw data instead.)*"
     )
 
 
