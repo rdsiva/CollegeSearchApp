@@ -7,15 +7,17 @@ const api = axios.create({
 
 export default api;
 
-export async function searchColleges({ q, type, mark, category, course, year, district }) {
+export async function searchColleges({ q, type, mark, category, courses, year, district }) {
   const params = { type };
   if (q) params.q = q;
   if (mark !== undefined) params.mark = mark;
   if (category) params.category = category;
-  if (course) params.course = course;
+  if (courses && courses.length) params.courses = courses;
   if (year) params.year = year;
   if (district) params.district = district;
-  const res = await api.get('/search', { params });
+  // FastAPI Query(list[str]) expects ?courses=a&courses=b — `indexes: null` drops
+  // axios's default `courses[]=…` bracket suffix.
+  const res = await api.get('/search', { params, paramsSerializer: { indexes: null } });
   return res.data;
 }
 

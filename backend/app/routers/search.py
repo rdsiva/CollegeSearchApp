@@ -47,27 +47,36 @@ _STOP_WORDS = {
     "the", "for", "sciences", "science", "school", "faculty",
 }
 
-# Common branch abbreviation → keywords that appear in full branch names
-_BRANCH_ALIASES: dict[str, list[str]] = {
-    "cse": ["computer science"],
-    "it": ["information technology"],
-    "ece": ["electronics", "communication"],
-    "eee": ["electrical", "electronics"],
-    "mech": ["mechanical"],
-    "civil": ["civil"],
-    "chem": ["chemical"],
-    "bio": ["bio"],
-    "aiml": ["artificial intelligence"],
-    "aids": ["data science"],
-    "csbs": ["computer science and business"],
-}
-
 def _normalize_name(name: str) -> str:
     """Lowercase, remove dots/punctuation, strip stop words."""
     name = name.lower()
     name = re.sub(r"[.\-,']", " ", name)   # remove dots so s.a. → s a
     tokens = [t for t in name.split() if t not in _STOP_WORDS]
     return " ".join(tokens) if tokens else name
+
+
+def _normalize_branch(name: str) -> str:
+    """Lowercase, strip pure-variant suffixes (Ss, Tamil Medium, Sandwich) so they
+    fold into the base discipline, then drop remaining punctuation and collapse
+    whitespace. Specialisation suffixes like "(Cyber Security)" or "(Data Science)"
+    are preserved and survive into the normalized form, so they do NOT match the
+    plain branch name."""
+    s = name.lower()
+    s = re.sub(r"\s*\((ss|sandwich|tamil medium|tamil)\)\s*", " ", s)
+    s = re.sub(r"[(),.\-/]", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _branch_matches_courses(branch_name: str, selected: list[str]) -> bool:
+    """True if branch's normalized name exactly equals any selected course's
+    normalized name. Variants like '(Ss)' or '(Tamil Medium)' fold into the base
+    name; specialisations stay distinct."""
+    bn = _normalize_branch(branch_name)
+    for sel in selected:
+        s = _normalize_branch(sel)
+        if s and bn == s:
+            return True
+    return False
 
 router = APIRouter()
 
@@ -124,7 +133,7 @@ async def search_colleges(
     type: str = Query("name", regex="^(name|code|cutoff)$"),
     mark: Optional[float] = Query(None),
     category: Optional[str] = Query(None, regex="^(OC|BC|BCM|MBC|SC|ST|SCA)$"),
-    course: Optional[str] = Query(None),
+    courses: Optional[list[str]] = Query(None),
     year: str = Query("2026", regex="^(2024|2025|2026)$"),
     district: Optional[str] = Query(None, max_length=50),
 ):
@@ -163,26 +172,20 @@ async def search_colleges(
     if type == "cutoff":
         if mark is None or not category:
             raise HTTPException(400, "mark and category are required for cutoff search")
+        course_filter = [c for c in (courses or []) if c and c.strip()]
         matched = []
         for college in colleges:
             for branch in college.get("courses", []):
-                # Filter by course keyword if provided
-                if course:
-                    branch_name_lower = branch["branch_name"].lower()
-                    course_lower = course.lower().strip()
-                    # Expand known abbreviations (e.g. "cse" → check for "computer science")
-                    aliases = _BRANCH_ALIASES.get(course_lower, [course_lower])
-                    if not any(alias in branch_name_lower for alias in aliases):
-                        continue
-                # Pick cutoff table based on requested year
-                # Fall back to 2024 if the requested year isn't available for this branch
+                if course_filter and not _branch_matches_courses(branch["branch_name"], course_filter):
+                    continue
+                # Pick cutoff table based on requested year, fall back if unavailable
                 if year == "2026":
                     cutoffs = branch.get("cutoffs_2026_predicted") or branch.get("cutoffs_2025") or branch.get("cutoffs", {})
                 elif year == "2025":
                     cutoffs = branch.get("cutoffs_2025") or branch.get("cutoffs", {})
                 else:
                     cutoffs = branch.get("cutoffs", {})
-                cutoff_val = cutoffs.get(category)
+                cutoff_val = (cutoffs or {}).get(category)
                 if cutoff_val is not None and cutoff_val <= mark:
                     matched.append(college)
                     break  # one match per college is enough
