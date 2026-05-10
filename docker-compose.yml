@@ -1,0 +1,52 @@
+name: collegesearch
+
+networks:
+  collegesearch_net:
+    driver: bridge
+  sentinelone-portal_s1net:
+    external: true
+
+services:
+
+  backend:
+    container_name: collegesearch-backend
+    build: ./backend
+    env_file: .env
+    environment:
+      ENVIRONMENT: production
+      CORS_ORIGIN: https://counsellinghelp.s2rdlabs.com
+      LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
+      OLLAMA_URL: ${OLLAMA_URL:-http://192.168.40.68:11434/v1}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma4:e4b}
+      OLLAMA_MODEL_CHAT: ${OLLAMA_MODEL_CHAT:-}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-ollama}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://s1bot:changeme@postgres:5432/collegesearch}
+    restart: unless-stopped
+    networks:
+      collegesearch_net:
+      sentinelone-portal_s1net:   # to reach shared postgres
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health',timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  web:
+    container_name: collegesearch-web
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: /api
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      collegesearch_net:
+      sentinelone-portal_s1net:   # cloudflared lives on this network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

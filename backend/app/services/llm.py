@@ -1,24 +1,122 @@
+"""Provider-agnostic LLM client.
+
+Backend selected via LLM_PROVIDER env var:
+  - "anthropic" (default): Claude API via the anthropic SDK
+  - "ollama": OpenAI-compatible endpoint exposed by Ollama (or any OpenAI-compatible
+    server). OLLAMA_URL must point at the base URL including `/v1`,
+    e.g. http://192.168.40.68:11434/v1. OLLAMA_API_KEY can be any non-empty string
+    for Ollama; for real OpenAI use a genuine key.
+
+Public surface (matches the call sites in routers/colleges.py and routers/chat.py):
+  - summarize_reviews(college_name, google_reviews, youtube_descriptions) -> ReviewSummary
+  - predict_cutoffs_2026(college_name, courses) -> dict[str, CourseCutoffs]
+  - chat(messages, system) -> str
+"""
 import os
 import json
+import httpx
 import anthropic
 from app.models.schemas import ReviewSummary, CourseCutoffs
 
-client: anthropic.AsyncAnthropic | None = None
+
+PROVIDER = os.getenv("LLM_PROVIDER", "anthropic").lower()
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://192.168.40.68:11434/v1").rstrip("/")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:e4b")  # used for research (JSON-output prompts)
+OLLAMA_MODEL_CHAT = os.getenv("OLLAMA_MODEL_CHAT", "") or OLLAMA_MODEL  # fallback to OLLAMA_MODEL
+OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "ollama")
+
+ANTHROPIC_MODEL_LARGE = "claude-sonnet-4-6"
+ANTHROPIC_MODEL_FAST = "claude-haiku-4-5-20251001"
+
+_anthropic_client: anthropic.AsyncAnthropic | None = None
 
 
-def get_client() -> anthropic.AsyncAnthropic:
-    global client
-    if client is None:
-        client = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
-    return client
+def _get_anthropic() -> anthropic.AsyncAnthropic:
+    global _anthropic_client
+    if _anthropic_client is None:
+        _anthropic_client = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
+    return _anthropic_client
 
+
+async def _anthropic_complete(
+    messages: list[dict],
+    system: str | None,
+    max_tokens: int,
+    model: str,
+) -> str:
+    kwargs: dict = {"model": model, "max_tokens": max_tokens, "messages": messages}
+    if system:
+        kwargs["system"] = system
+    resp = await _get_anthropic().messages.create(**kwargs)
+    return resp.content[0].text.strip()
+
+
+async def _ollama_complete(
+    messages: list[dict],
+    system: str | None,
+    max_tokens: int,
+    model: str = OLLAMA_MODEL,
+) -> str:
+    """Call an OpenAI-compatible /chat/completions endpoint."""
+    payload_messages: list[dict] = []
+    if system:
+        payload_messages.append({"role": "system", "content": system})
+    payload_messages.extend(messages)
+    payload = {
+        "model": model,
+        "messages": payload_messages,
+        "max_tokens": max_tokens,
+        "stream": False,
+    }
+    headers = {
+        "Authorization": f"Bearer {OLLAMA_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=120) as client:
+        r = await client.post(
+            f"{OLLAMA_URL}/chat/completions", json=payload, headers=headers,
+        )
+        r.raise_for_status()
+        data = r.json()
+    msg = data["choices"][0]["message"]
+    content = (msg.get("content") or "").strip()
+    if content:
+        return content
+    # Reasoning models (e.g. gemma4:e4b, glm-4.7-flash) put their thinking in a
+    # separate `reasoning` field and may emit empty content if max_tokens runs
+    # out during reasoning. Fall back to that so the user sees *something*.
+    return (msg.get("reasoning") or "").strip()
+
+
+async def _complete(
+    messages: list[dict],
+    system: str | None,
+    max_tokens: int,
+    anthropic_model: str,
+) -> str:
+    """Provider dispatch — Ollama uses a single model regardless of task."""
+    if PROVIDER == "ollama":
+        return await _ollama_complete(messages, system, max_tokens)
+    return await _anthropic_complete(messages, system, max_tokens, anthropic_model)
+
+
+def _strip_code_fence(raw: str) -> str:
+    raw = raw.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+    return raw
+
+
+# ─── Public API ──────────────────────────────────────────────────────────────
 
 async def summarize_reviews(
     college_name: str,
     google_reviews: list[str],
     youtube_descriptions: list[str],
 ) -> ReviewSummary:
-    """Use Claude to summarize reviews and compute sentiment."""
     if not google_reviews and not youtube_descriptions:
         return ReviewSummary()
 
@@ -45,18 +143,13 @@ Based on the above, return a JSON object with exactly these keys:
 Return only the JSON, no other text."""
 
     try:
-        resp = await get_client().messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=600,
+        raw = await _complete(
             messages=[{"role": "user", "content": prompt}],
+            system=None,
+            max_tokens=600,
+            anthropic_model=ANTHROPIC_MODEL_LARGE,
         )
-        raw = resp.content[0].text.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-            raw = raw.strip()
-        data = json.loads(raw)
+        data = json.loads(_strip_code_fence(raw))
         return ReviewSummary(
             sentiment_score=float(data.get("sentiment_score", 5.0)),
             pros=data.get("pros", []),
@@ -72,17 +165,12 @@ async def predict_cutoffs_2026(
     college_name: str,
     courses: list[dict],
 ) -> dict[str, CourseCutoffs]:
-    """
-    Use Claude to predict 2026 TNEA cutoffs using up to 6 years of history.
-    Returns dict keyed by branch_code -> CourseCutoffs.
-    """
     branch_lines = []
     for c in courses:
         hist = c.get("historical_cutoffs") or {}
         oc_2024 = (c.get("cutoffs") or {}).get("OC")
         oc_2025 = (c.get("cutoffs_2025") or {}).get("OC")
 
-        # Build year-by-year OC trend line from all available data
         year_oc: dict[str, float] = {}
         for yr in ("2020", "2021", "2022", "2023"):
             val = (hist.get(yr) or {}).get("OC")
@@ -98,7 +186,6 @@ async def predict_cutoffs_2026(
 
         trend_str = " | ".join(f"{yr}: {v}" for yr, v in sorted(year_oc.items()))
 
-        # Include 2024 category breakdown so LLM can derive gaps
         cutoffs_2024 = c.get("cutoffs") or {}
         cats = ", ".join(
             f"{cat}={cutoffs_2024.get(cat)}"
@@ -145,18 +232,13 @@ Return ONLY a JSON array, no other text:
 ]"""
 
     try:
-        resp = await get_client().messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=800,
+        raw = await _complete(
             messages=[{"role": "user", "content": prompt}],
+            system=None,
+            max_tokens=800,
+            anthropic_model=ANTHROPIC_MODEL_FAST,
         )
-        raw = resp.content[0].text.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-            raw = raw.strip()
-        data = json.loads(raw)
+        data = json.loads(_strip_code_fence(raw))
         result = {}
         for item in data:
             code = item.get("branch_code")
@@ -175,18 +257,24 @@ Return ONLY a JSON array, no other text:
         return _fallback_predict_cutoffs(courses)
 
 
+async def chat(messages: list[dict], system: str) -> str:
+    """One-shot chat completion. Falls back to empty string on failure (caller handles)."""
+    if PROVIDER == "ollama":
+        # Headroom matters for the gemma reasoning models — they emit thoughts
+        # alongside content. Empty `content` falls back to `reasoning` in the
+        # client. 600 tokens covers most replies in 15-25s on gemma4:31b.
+        return await _ollama_complete(messages, system, max_tokens=600, model=OLLAMA_MODEL_CHAT)
+    return await _anthropic_complete(messages, system, max_tokens=600, model=ANTHROPIC_MODEL_FAST)
+
+
+# ─── Heuristic fallbacks (used when LLM call fails) ──────────────────────────
+
 def _linear_trend(year_oc: dict[str, float]) -> float:
-    """
-    Compute next-year slope using simple linear regression on OC values keyed by year string.
-    Returns the predicted increment for one additional year.
-    Falls back to mean of last-3-year deltas if fewer than 3 points.
-    """
     if not year_oc:
         return 1.0
     pts = sorted((int(yr), v) for yr, v in year_oc.items() if v is not None)
     if len(pts) < 2:
         return 1.0
-    # Use last 6 points max
     pts = pts[-6:]
     if len(pts) == 2:
         return round(pts[-1][1] - pts[-2][1], 2)
@@ -201,7 +289,6 @@ def _linear_trend(year_oc: dict[str, float]) -> float:
 
 
 def _fallback_predict_cutoffs(courses: list[dict]) -> dict[str, CourseCutoffs]:
-    """Regression-based fallback when Claude API is unavailable."""
     CAT_OFFSETS = {"BC": -14, "BCM": -23, "MBC": -18, "SC": -32, "SCA": -37, "ST": -51}
     result = {}
     for c in courses:
@@ -223,7 +310,6 @@ def _fallback_predict_cutoffs(courses: list[dict]) -> dict[str, CourseCutoffs]:
             continue
 
         slope = _linear_trend(year_oc)
-        # Clamp slope: max +5 for high-demand, min -3 for declining
         slope = max(-3.0, min(5.0, slope))
         oc_2026 = round(min(200.0, max(80.0, base_oc + slope)), 1)
 
@@ -239,7 +325,6 @@ def _fallback_predict_cutoffs(courses: list[dict]) -> dict[str, CourseCutoffs]:
 
 
 def _fallback_summary(reviews: list[str]) -> ReviewSummary:
-    """Keyword-based fallback when Claude API is unavailable."""
     if not reviews:
         return ReviewSummary()
 

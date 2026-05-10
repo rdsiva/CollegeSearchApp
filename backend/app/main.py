@@ -8,7 +8,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from app.limiter import limiter
-from app.routers import search, colleges, export, chat
+from app.routers import search, colleges, export, chat, metrics
+from app import db
+from app.services import metrics_store
 
 load_dotenv()
 
@@ -68,9 +70,22 @@ app.include_router(search.router, prefix="/api", tags=["Search"])
 app.include_router(colleges.router, prefix="/api", tags=["Colleges"])
 app.include_router(export.router, prefix="/api", tags=["Export"])
 app.include_router(chat.router, prefix="/api", tags=["Chat"])
+app.include_router(metrics.router, prefix="/api", tags=["Metrics"])
 
 
 _START_TIME = _time.time()
+
+
+@app.on_event("startup")
+async def _on_startup() -> None:
+    await db.init()
+    metrics_store.start_flusher()
+
+
+@app.on_event("shutdown")
+async def _on_shutdown() -> None:
+    await metrics_store.stop_flusher()
+    await db.close()
 
 
 @app.get("/")

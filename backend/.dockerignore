@@ -1,0 +1,16 @@
+__pycache__
+*.pyc
+*.pyo
+.venv
+venv
+.env
+.env.local
+.env.production
+*.log
+.git
+.gitignore
+README.md
+Dockerfile
+.dockerignore
+fetch_historical_cutoffs.py
+*.pdf

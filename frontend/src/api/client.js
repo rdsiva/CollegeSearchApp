@@ -5,6 +5,8 @@ const api = axios.create({
   timeout: 30000,
 });
 
+export default api;
+
 export async function searchColleges({ q, type, mark, category, course, year, district }) {
   const params = { type };
   if (q) params.q = q;
@@ -18,7 +20,25 @@ export async function searchColleges({ q, type, mark, category, course, year, di
 }
 
 export async function researchColleges(collegeCodes) {
-  const res = await api.post('/colleges/research', { college_codes: collegeCodes });
+  // LLM summarization + per-course cutoff prediction can take 30-60s per college,
+  // and the call runs all colleges in parallel server-side — give it generous headroom.
+  const timeout = Math.max(120000, (collegeCodes?.length || 1) * 60000);
+  const res = await api.post('/colleges/research', { college_codes: collegeCodes }, { timeout });
+  return res.data;
+}
+
+// Async queue: start a job, then poll for state.
+export async function startResearchJob(collegeCodes) {
+  const res = await api.post(
+    '/colleges/research/start',
+    { college_codes: collegeCodes },
+    { timeout: 10000 },
+  );
+  return res.data; // { id, codes, status, results, errors, completed, progress, ... }
+}
+
+export async function getResearchJob(jobId) {
+  const res = await api.get(`/colleges/research/job/${jobId}`, { timeout: 10000 });
   return res.data;
 }
 
@@ -37,7 +57,7 @@ export async function sendChat({ message, collegeCode, history }) {
     message,
     college_code: collegeCode || null,
     history: history || [],
-  });
+  }, { timeout: 90000 });  // local LLM can be slower than Anthropic
   return res.data;
 }
 

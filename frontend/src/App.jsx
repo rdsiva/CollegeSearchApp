@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { SessionProvider } from './context/SessionContext';
+import { startHeartbeat } from './api/analytics';
 import { ChatProvider } from './context/ChatContext';
 import { CompareProvider } from './context/CompareContext';
 import Home from './pages/Home';
@@ -12,6 +13,10 @@ import './index.css';
 
 export default function App() {
   const [legalModal, setLegalModal] = useState(null); // 'terms' | 'privacy' | null
+
+  useEffect(() => {
+    startHeartbeat();
+  }, []);
 
   return (
     <SessionProvider>
